@@ -1,0 +1,116 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.5
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    volumes:
+      - redpanda-v26-data:/var/lib/redpanda/data
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.5
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - "rpk -X brokers=redpanda:9092 topic create inventory.events || rpk -X brokers=redpanda:9092 topic describe inventory.events"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  opensearch:
+    image: opensearchproject/opensearch:3.5.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      args:
+        SERVICE: api
+    environment:
+      PORT: "8080"
+      CONFIG_PATH: /app/config/inventory-config.json
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: inventory.events
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: inventory-assets
+      AUTH_MODE: dev
+      AUTH_REQUIRED: "false"
+      COOKIE_SECURE: "false"
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      opensearch:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    security_opt:
+      - no-new-privileges:true
+
+  indexer:
+    build:
+      context: .
+      args:
+        SERVICE: indexer
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_TOPIC: inventory.events
+      KAFKA_GROUP: inventory-indexer
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: inventory-assets
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      opensearch:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    build:
+      context: ./web
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+    security_opt:
+      - no-new-privileges:true
+
+  seed:
+    image: curlimages/curl:8.19.0
+    profiles: ["tools"]
+    environment:
+      API_URL: http://api:8080
+    volumes:
+      - ./scripts:/scripts:ro
+    command: ["sh", "/scripts/seed.sh"]
+    depends_on:
+      - api
+
+volumes:
+  redpanda-v26-data:

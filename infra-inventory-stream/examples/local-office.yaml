@@ -1,0 +1,66 @@
+assets:
+  - id: branch-fw-sjc
+    type: network
+    name: San Jose Branch Firewall
+    owner: it-ops
+    environment: prod
+    region: san-jose-office
+    service: office-network
+    version: 21
+    dependencies: []
+    risk: high
+  - id: branch-wifi-sjc
+    type: network
+    name: San Jose Wi-Fi Mesh
+    owner: it-ops
+    environment: prod
+    region: san-jose-office
+    service: office-network
+    version: 34
+    dependencies:
+      - branch-fw-sjc
+    risk: medium
+  - id: svc-servicenow-agent-console
+    type: frontend
+    name: ServiceNow Agent Console
+    owner: product
+    environment: prod
+    region: eastus
+    service: support-workflow
+    version: 12
+    dependencies:
+      - svc-cmdb-search-api
+      - os-inventory-index
+    risk: low
+  - id: svc-cmdb-search-api
+    type: service
+    name: CMDB Search API
+    owner: core-infra
+    environment: prod
+    region: eastus
+    service: inventory
+    version: 42
+    dependencies:
+      - kafka-inventory-events
+      - os-inventory-index
+    risk: medium
+  - id: kafka-inventory-events
+    type: queue
+    name: Inventory Event Stream
+    owner: data
+    environment: prod
+    region: eastus
+    service: inventory
+    version: 9
+    dependencies: []
+    risk: low
+  - id: os-inventory-index
+    type: database
+    name: Inventory Search Index
+    owner: search
+    environment: prod
+    region: eastus
+    service: inventory
+    version: 7
+    dependencies: []
+    risk: medium

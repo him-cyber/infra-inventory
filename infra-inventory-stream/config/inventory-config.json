@@ -1,0 +1,16 @@
+{
+  "version": "2026-04-30.demo",
+  "allowed_asset_types": ["service", "database", "queue", "cache", "worker", "frontend", "endpoint", "network"],
+  "search_fields": ["name^3", "service^2", "owner", "type", "environment", "region", "risk"],
+  "tenant_rate_limits": {
+    "demo": 120,
+    "servicenow-referral": 300
+  },
+  "index_routing": {
+    "demo": "inventory-assets",
+    "demo/prod": "inventory-assets-prod",
+    "servicenow-referral": "inventory-assets-referral"
+  },
+  "replay_window": 128,
+  "updated_at": "2026-04-30T00:00:00Z"
+}

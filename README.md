@@ -107,7 +107,7 @@ openssl rand -base64 32
 
 ## Security Export
 
-Container images are pinned to current demo-safe versions, including Go `1.25.7`, Redpanda `v26.1.5`, OpenSearch `3.5.0`, Nginx `1.29-alpine`, and Curl `8.19.0`.
+Container images are pinned to current demo-safe versions, including Go `1.26.2`, Redpanda `v26.1.5`, OpenSearch `3.5.0`, Nginx `1.29-alpine`, and Curl `8.19.0`.
 
 To export Docker Scout findings:
 

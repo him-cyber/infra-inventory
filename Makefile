@@ -25,13 +25,13 @@ seed:
 	docker compose run --rm seed
 
 import:
-	docker run --rm -v "$$(pwd)":/src -w /src golang:1.25.7-alpine go run ./cmd/importer -file /src/$(FILE) -tenant $(TENANT) -api http://host.docker.internal:8080
+	docker run --rm -v "$$(pwd)":/src -w /src golang:1.26.2-alpine go run ./cmd/importer -file /src/$(FILE) -tenant $(TENANT) -api http://host.docker.internal:8080
 
 logs:
 	docker compose logs -f api indexer
 
 test:
-	docker run --rm -v "$$(pwd)":/src -w /src golang:1.25.7-alpine go test ./...
+	docker run --rm -v "$$(pwd)":/src -w /src golang:1.26.2-alpine go test ./...
 
 smoke:
 	COUNT=5000 sh scripts/load-smoke.sh

@@ -2,6 +2,16 @@
 bin/
 dist/
 node_modules/
+coverage.out
+*.coverprofile
+*.log
+.env
+.env.*
+.vscode/
+.idea/
+.cache/
+tmp/
+*.tmp
 .terraform/
 terraform.tfstate
 terraform.tfstate.backup

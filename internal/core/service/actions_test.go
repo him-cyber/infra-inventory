@@ -56,6 +56,9 @@ func TestAnalyticsCVEAnalysisAndTicketUseInventorySignals(t *testing.T) {
 	if ticket.Number == "" || ticket.Table != "incident" || len(ticket.ConfigurationItems) == 0 {
 		t.Fatalf("expected ServiceNow ticket, got %+v", ticket)
 	}
+	if len(app.Tickets()) != 1 {
+		t.Fatalf("expected submitted ticket to be stored, got %+v", app.Tickets())
+	}
 	intel, err := app.ConfigIntelligence(context.Background())
 	if err != nil {
 		t.Fatal(err)

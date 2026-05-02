@@ -58,9 +58,9 @@ func (m CVEModel) features(asset domain.Asset) map[string]float64 {
 		features["medium_risk"] = 1
 	}
 	switch asset.Type {
-	case "network", "frontend", "service":
+	case "network", "frontend", "service", "kubernetes", "container", "function":
 		features["internet_edge"] = 1
-	case "database", "cache", "queue":
+	case "database", "cache", "queue", "keyvault":
 		features["stateful"] = 1
 	}
 	if len(asset.Dependencies) >= 2 {
@@ -104,6 +104,10 @@ func cveFor(asset domain.Asset) string {
 		return "CVE-2025-68121"
 	case "database":
 		return "CVE-2026-32283"
+	case "kubernetes", "container":
+		return "CVE-2026-31789"
+	case "keyvault":
+		return "CVE-2026-34040"
 	case "service", "frontend":
 		return "CVE-2025-61729"
 	default:

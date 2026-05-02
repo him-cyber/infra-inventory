@@ -45,8 +45,11 @@ verify:
 	docker compose run --rm --entrypoint curl seed -fsS http://api:8080/api/topology
 	docker compose run --rm --entrypoint curl seed -fsS http://api:8080/api/analytics
 	docker compose run --rm --entrypoint curl seed -fsS -X POST http://api:8080/api/config/recommendations
+	docker compose run --rm --entrypoint curl seed -fsS -X POST http://api:8080/api/config/automation
 	docker compose run --rm --entrypoint curl seed -fsS -X POST http://api:8080/api/security/analyze
+	docker compose run --rm --entrypoint curl seed -fsS -X POST http://api:8080/api/servicenow/tickets/draft
 	docker compose run --rm --entrypoint curl seed -fsS -X POST http://api:8080/api/servicenow/tickets
+	docker compose run --rm --entrypoint curl seed -fsS http://api:8080/api/servicenow/tickets
 	docker compose run --rm --entrypoint curl seed -fsS "http://api:8080/api/assets/search?q=Search"
 
 security-export:

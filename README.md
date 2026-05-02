@@ -13,11 +13,12 @@ Open http://localhost:5173.
 
 Use the UI in this order:
 
-1. Click `Attach JSON` to stream the sample inventory from the browser.
-2. Click `Generate knowledge` to refresh analytics, CVE scoring, and config suggestions.
-3. Drag a screenshot or topology image into `Evidence Drop`.
-4. Click `Put on cooldown` for the highest-risk CI, then `Create ticket`.
-5. Search inventory by asset, owner, service, risk, or region.
+1. Click `Add sample` or import `examples/local-office.yaml` to stream office, AKS, container, and Key Vault assets.
+2. Click `Generate` to refresh analytics, CVE scoring, and config suggestions.
+3. Use the inventory table and live map to select an asset and inspect its dependencies.
+4. Click `Apply guardrail` to create a configuration automation preview from the current inventory.
+5. Drag a screenshot or topology image into `Evidence Drop`.
+6. Click `Put on cooldown` for the highest-risk CI, then `Review ticket` and submit it.
 
 Verify the stack:
 
@@ -48,6 +49,8 @@ What happens:
 4. `indexer` writes OpenSearch documents.
 5. The web console reads the search index, accepts screenshot evidence, and generates remediation knowledge from the current state.
 
+The file matters only when it is a real inventory source or export. Good inputs include Azure Resource Graph exports, Terraform state converted to this schema, Kubernetes manifests, Helm values, Docker Compose files, network device exports, or a CMDB export. Hand-written sample YAML is only seed data for local testing.
+
 ## Local URLs
 
 - Web console: http://localhost:5173
@@ -63,7 +66,7 @@ Inventory JSON/YAML
   -> Kafka-compatible stream
   -> Go indexer
   -> OpenSearch
-  -> CVE scoring + config recommendations + image evidence + remediation ticket
+  -> inventory map + CVE scoring + config automation + image evidence + remediation ticket
 ```
 
 ## Remediation Workflow
@@ -74,7 +77,7 @@ Use this path when a weak service or endpoint needs action:
 2. Run `Generate knowledge`.
 3. Drop screenshots, diagrams, or scan evidence into the browser.
 4. Put the highest-risk CI on cooldown.
-5. Create the ServiceNow-style ticket payload.
+5. Review and submit the ServiceNow-style ticket payload.
 
 The browser evidence is kept local for the demo. The ticket payload carries the CVE finding, impacted configuration items, and hardening notes.
 
@@ -86,7 +89,10 @@ curl "http://localhost:8080/api/topology"
 curl "http://localhost:8080/api/analytics"
 curl -X POST "http://localhost:8080/api/security/analyze"
 curl -X POST "http://localhost:8080/api/config/recommendations"
+curl -X POST "http://localhost:8080/api/config/automation"
+curl -X POST "http://localhost:8080/api/servicenow/tickets/draft"
 curl -X POST "http://localhost:8080/api/servicenow/tickets"
+curl "http://localhost:8080/api/servicenow/tickets"
 curl "http://localhost:8080/api/stream/recent"
 ```
 
@@ -105,7 +111,7 @@ Reports go to `reports/`, which is ignored by Git.
 
 ## Azure SSO and Cloud Mode
 
-Local mode works without Azure. For Azure Entra ID sign-in, set:
+Local mode works without Azure and uses a local Azure sample. Azure mode routes sign-in through Entra ID before import actions. For Azure Entra ID sign-in, set:
 
 ```bash
 AUTH_MODE=azure

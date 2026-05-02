@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/domain"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/ml"
 )
@@ -67,7 +68,7 @@ func (s *Service) StartCVEAnalysis(ctx context.Context) (domain.CVEAnalysisRepor
 	}, nil
 }
 
-func (s *Service) CreateServiceNowTicket(ctx context.Context) (domain.ServiceNowTicket, error) {
+func (s *Service) DraftServiceNowTicket(ctx context.Context) (domain.ServiceNowTicket, error) {
 	report, err := s.StartCVEAnalysis(ctx)
 	if err != nil {
 		return domain.ServiceNowTicket{}, err
@@ -100,6 +101,32 @@ func (s *Service) CreateServiceNowTicket(ctx context.Context) (domain.ServiceNow
 	}, nil
 }
 
+func (s *Service) CreateServiceNowTicket(ctx context.Context) (domain.ServiceNowTicket, error) {
+	ticket, err := s.DraftServiceNowTicket(ctx)
+	if err != nil {
+		return domain.ServiceNowTicket{}, err
+	}
+	s.recordTicket(ticket)
+	return ticket, nil
+}
+
+func (s *Service) Tickets() []domain.ServiceNowTicket {
+	s.ticketMu.RLock()
+	defer s.ticketMu.RUnlock()
+	results := make([]domain.ServiceNowTicket, len(s.tickets))
+	copy(results, s.tickets)
+	return results
+}
+
+func (s *Service) recordTicket(ticket domain.ServiceNowTicket) {
+	s.ticketMu.Lock()
+	defer s.ticketMu.Unlock()
+	s.tickets = append([]domain.ServiceNowTicket{ticket}, s.tickets...)
+	if len(s.tickets) > 20 {
+		s.tickets = s.tickets[:20]
+	}
+}
+
 func (s *Service) ConfigIntelligence(ctx context.Context) (domain.ConfigIntelligence, error) {
 	snap := s.config.Snapshot()
 	result, err := s.store.Search(ctx, domain.SearchQuery{}, snap.SearchFields)
@@ -109,7 +136,7 @@ func (s *Service) ConfigIntelligence(ctx context.Context) (domain.ConfigIntellig
 	owners := topValues(result.Assets, func(asset domain.Asset) string { return asset.Owner }, 6)
 	services := topValues(result.Assets, func(asset domain.Asset) string { return asset.Service }, 6)
 	highRisk := countRisk(result.Assets, "high")
-	stateful := countTypes(result.Assets, "database", "queue")
+	stateful := countTypes(result.Assets, "database", "queue", "keyvault", "kubernetes")
 	endpoints := countTypes(result.Assets, "endpoint", "network")
 	recent := len(s.recent.Snapshot())
 
@@ -131,15 +158,15 @@ func (s *Service) ConfigIntelligence(ctx context.Context) (domain.ConfigIntellig
 		{
 			Field:      "risk_routing",
 			Current:    "manual assignment",
-			Proposed:   "critical/high -> Core Infrastructure, endpoint/network -> IT Operations, frontend -> Product",
+			Proposed:   "critical/high -> Core Infrastructure, endpoint/network -> IT Operations, kubernetes/container -> Platform",
 			Reason:     "CVE scoring and asset ownership can pre-route ServiceNow incidents before an agent reads the ticket",
 			Confidence: confidence(0.81, highRisk+endpoints, 8),
 		},
 		{
 			Field:      "stateful_controls",
 			Current:    "generic inventory validation",
-			Proposed:   "require owner, dependency, and replay evidence for database and queue assets",
-			Reason:     "stateful assets create the highest incident blast radius and need stronger config evidence",
+			Proposed:   "require owner, dependency, and replay evidence for database, queue, keyvault, and kubernetes assets",
+			Reason:     "stateful and orchestration assets create the highest incident blast radius and need stronger config evidence",
 			Confidence: confidence(0.79, stateful, 5),
 		},
 	}
@@ -158,15 +185,90 @@ func (s *Service) ConfigIntelligence(ctx context.Context) (domain.ConfigIntellig
 			"network":      "Change / IT Operations / branch network approval",
 			"endpoint":     "Incident / Helpdesk / employee device support",
 			"database":     "Change / Platform / stateful dependency review",
+			"kubernetes":   "Change / Platform / workload hardening review",
+			"container":    "Incident / Platform / image CVE remediation",
+			"keyvault":     "Change / Security / secret and access review",
 		},
 		PreviewConfig: map[string]any{
 			"version":              snap.Version + ".preview",
 			"search_fields":        []string{"name", "owner", "service", "region", "environment", "risk", "type"},
 			"replay_window":        max(128, recent*4),
 			"owner_routes":         owners,
-			"stateful_asset_types": []string{"database", "queue"},
+			"stateful_asset_types": []string{"database", "queue", "keyvault", "kubernetes"},
 		},
 	}, nil
+}
+
+func (s *Service) ApplyConfigAutomation(ctx context.Context) (domain.ConfigAutomation, error) {
+	intel, err := s.ConfigIntelligence(ctx)
+	if err != nil {
+		return domain.ConfigAutomation{}, err
+	}
+	snap := s.config.Snapshot()
+	routes := map[string]string{
+		"critical_cve": "Core Infrastructure",
+		"high_cve":     "Core Infrastructure",
+		"network":      "IT Operations",
+		"endpoint":     "Helpdesk",
+		"database":     "Platform",
+		"kubernetes":   "Platform",
+		"container":    "Platform",
+		"keyvault":     "Security",
+	}
+	for key, value := range intel.ServiceNowRouting {
+		routes[key] = value
+	}
+	automation := domain.ConfigAutomation{
+		AutomationID: "CFG-AUTO-" + uuid.NewString(),
+		AppliedAt:    time.Now().UTC(),
+		Status:       "applied-preview",
+		Policy:       "inventory-risk-guardrail",
+		Guardrails: []string{
+			"route high and critical CVE findings to the owning support group",
+			"require owner, dependency, and replay evidence on database, queue, keyvault, and kubernetes assets",
+			"keep Search fields aligned to name, owner, service, region, environment, risk, and type",
+		},
+		Routes:        routes,
+		ReplayWindow:  max(snap.ReplayWindow, intFromAny(intel.PreviewConfig["replay_window"], snap.ReplayWindow)),
+		AffectedTypes: []string{"database", "queue", "network", "endpoint", "kubernetes", "container", "keyvault"},
+		Evidence: []string{
+			intel.Summary,
+			fmt.Sprintf("%d recent Kafka events available for replay", len(s.recent.Snapshot())),
+			"OpenSearch inventory index is the source for policy scope",
+		},
+	}
+	s.recordAutomation(automation)
+	return automation, nil
+}
+
+func (s *Service) ConfigAutomations() []domain.ConfigAutomation {
+	s.autoMu.RLock()
+	defer s.autoMu.RUnlock()
+	results := make([]domain.ConfigAutomation, len(s.automations))
+	copy(results, s.automations)
+	return results
+}
+
+func (s *Service) recordAutomation(automation domain.ConfigAutomation) {
+	s.autoMu.Lock()
+	defer s.autoMu.Unlock()
+	s.automations = append([]domain.ConfigAutomation{automation}, s.automations...)
+	if len(s.automations) > 10 {
+		s.automations = s.automations[:10]
+	}
+}
+
+func intFromAny(value any, fallback int) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return fallback
+	}
 }
 
 func countRisk(assets []domain.Asset, risk string) int {

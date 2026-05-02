@@ -1,6 +1,6 @@
 {
   "version": "2026-04-30.demo",
-  "allowed_asset_types": ["service", "database", "queue", "cache", "worker", "frontend", "endpoint", "network"],
+  "allowed_asset_types": ["service", "database", "queue", "cache", "worker", "frontend", "endpoint", "network", "kubernetes", "container", "function", "keyvault"],
   "search_fields": ["name^3", "service^2", "owner", "type", "environment", "region", "risk"],
   "tenant_rate_limits": {
     "demo": 120,

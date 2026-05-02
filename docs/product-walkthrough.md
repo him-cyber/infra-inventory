@@ -1,6 +1,6 @@
 # Product Walkthrough
 
-Infra Inventory Stream turns organization infrastructure data into searchable operational knowledge.
+Infra Inventory Stream turns organization infrastructure data into searchable operational knowledge. The useful correlation is: source facts become a CMDB-like graph, graph relationships expose blast radius, CVE scoring ranks weak points, and configuration automation turns those signals into a reviewable workflow action.
 
 ## Run Locally
 
@@ -22,7 +22,7 @@ React UI -> Go API -> Kafka topic -> Go indexer -> OpenSearch -> Go search/API r
 2. Run CVE scoring against live OpenSearch assets.
 3. Generate configuration recommendations from observed owners, services, risks, and replay behavior.
 4. Import a cloud account inventory snapshot and publish each discovered asset through Kafka.
-5. Create a ServiceNow-style incident/change payload with evidence from Kafka and OpenSearch.
+5. Review and submit a ServiceNow-style incident/change payload with evidence from Kafka and OpenSearch.
 
 ## Security And Identity
 

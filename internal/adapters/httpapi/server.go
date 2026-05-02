@@ -47,7 +47,11 @@ func New(app *service.Service, log *slog.Logger, authManager *auth.Manager) http
 			r.Get("/topology", s.topology)
 			r.Get("/analytics", s.analytics)
 			r.Post("/config/recommendations", s.configRecommendations)
+			r.Post("/config/automation", s.applyConfigAutomation)
+			r.Get("/config/automations", s.configAutomations)
 			r.Post("/security/analyze", s.startSecurityAnalysis)
+			r.Get("/servicenow/tickets", s.serviceNowTickets)
+			r.Post("/servicenow/tickets/draft", s.draftServiceNowTicket)
 			r.Post("/servicenow/tickets", s.createServiceNowTicket)
 			r.Get("/stream/recent", s.recentEvents)
 			r.Post("/stream/replay", s.replayEvents)
@@ -98,6 +102,19 @@ func (s *Server) configRecommendations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, recommendations)
 }
 
+func (s *Server) applyConfigAutomation(w http.ResponseWriter, r *http.Request) {
+	automation, err := s.app.ApplyConfigAutomation(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, automation)
+}
+
+func (s *Server) configAutomations(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"automations": s.app.ConfigAutomations()})
+}
+
 func (s *Server) topology(w http.ResponseWriter, r *http.Request) {
 	topology, err := s.app.Topology(r.Context())
 	if err != nil {
@@ -132,6 +149,19 @@ func (s *Server) createServiceNowTicket(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusAccepted, ticket)
+}
+
+func (s *Server) draftServiceNowTicket(w http.ResponseWriter, r *http.Request) {
+	ticket, err := s.app.DraftServiceNowTicket(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, ticket)
+}
+
+func (s *Server) serviceNowTickets(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"tickets": s.app.Tickets()})
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {

@@ -25,14 +25,18 @@ type SearchStore interface {
 }
 
 type Service struct {
-	config     *config.Manager
-	publisher  kafka.Publisher
-	store      SearchStore
-	recent     *ring.Buffer[domain.Event]
-	limits     *ratelimit.Limiter
-	topic      string
-	orgMu      sync.RWMutex
-	orgImports []domain.OrgImportResult
+	config      *config.Manager
+	publisher   kafka.Publisher
+	store       SearchStore
+	recent      *ring.Buffer[domain.Event]
+	limits      *ratelimit.Limiter
+	topic       string
+	orgMu       sync.RWMutex
+	orgImports  []domain.OrgImportResult
+	autoMu      sync.RWMutex
+	automations []domain.ConfigAutomation
+	ticketMu    sync.RWMutex
+	tickets     []domain.ServiceNowTicket
 }
 
 func NewService(cfg *config.Manager, pub kafka.Publisher, store SearchStore, recent *ring.Buffer[domain.Event], limits *ratelimit.Limiter, topic string) *Service {

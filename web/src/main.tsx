@@ -27,6 +27,8 @@ import {
   Upload,
   PauseCircle,
   Wrench,
+  CheckCircle2,
+  PlusCircle,
 } from 'lucide-react';
 import './styles.css';
 
@@ -158,6 +160,18 @@ type EvidenceItem = {
   status: string;
 };
 
+type ConfigAutomation = {
+  automation_id: string;
+  applied_at: string;
+  status: string;
+  policy: string;
+  guardrails: string[];
+  routes: Record<string, string>;
+  replay_window: number;
+  affected_types: string[];
+  evidence: string[];
+};
+
 const apiBase = import.meta.env.VITE_API_URL ?? '';
 
 const sampleInventoryPayload = JSON.stringify({
@@ -245,13 +259,19 @@ function App() {
   const [analysis, setAnalysis] = useState<CVEAnalysis | null>(null);
   const [configIntel, setConfigIntel] = useState<ConfigIntelligence | null>(null);
   const [ticket, setTicket] = useState<ServiceNowTicket | null>(null);
+  const [ticketDraft, setTicketDraft] = useState<ServiceNowTicket | null>(null);
+  const [savedTickets, setSavedTickets] = useState<ServiceNowTicket[]>([]);
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [azureModalOpen, setAzureModalOpen] = useState(false);
   const [imports, setImports] = useState<OrgImport[]>([]);
   const [actionStatus, setActionStatus] = useState('ready');
   const [attachment, setAttachment] = useState(sampleInventoryPayload);
   const [attachResult, setAttachResult] = useState('ready for inventory');
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
   const [cooldownAssets, setCooldownAssets] = useState<string[]>([]);
+  const [automations, setAutomations] = useState<ConfigAutomation[]>([]);
+  const [selectedAssetId, setSelectedAssetId] = useState('');
   const [query, setQuery] = useState('');
   const [config, setConfig] = useState<{ version: string; updated_at: string; replay_window: number } | null>(null);
   const [status, setStatus] = useState('checking');
@@ -259,7 +279,7 @@ function App() {
   async function refresh() {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
-    const [searchResp, eventResp, configResp, topologyResp, analyticsResp, healthResp, authResp, importsResp] = await Promise.all([
+    const [searchResp, eventResp, configResp, topologyResp, analyticsResp, healthResp, authResp, importsResp, automationsResp, ticketsResp] = await Promise.all([
       fetch(`${apiBase}/api/assets/search?${params.toString()}`),
       fetch(`${apiBase}/api/stream/recent`),
       fetch(`${apiBase}/api/config/version`),
@@ -267,7 +287,9 @@ function App() {
       fetch(`${apiBase}/api/analytics`),
       fetch(`${apiBase}/healthz`),
       fetch(`${apiBase}/api/auth/session`),
-      fetch(`${apiBase}/api/org/imports`)
+      fetch(`${apiBase}/api/org/imports`),
+      fetch(`${apiBase}/api/config/automations`),
+      fetch(`${apiBase}/api/servicenow/tickets`)
     ]);
     const searchData = await searchResp.json();
     const eventData = await eventResp.json();
@@ -278,6 +300,8 @@ function App() {
     setAnalytics(await analyticsResp.json());
     setAuthSession(await authResp.json());
     setImports((await importsResp.json()).imports ?? []);
+    setAutomations((await automationsResp.json()).automations ?? []);
+    setSavedTickets((await ticketsResp.json()).tickets ?? []);
     setStatus(healthResp.ok ? 'healthy' : 'degraded');
   }
 
@@ -295,11 +319,22 @@ function App() {
     setActionStatus('CVE analysis ready');
   }
 
-  async function createTicket() {
-    setActionStatus('creating ServiceNow ticket');
+  async function reviewTicket() {
+    setActionStatus('building ticket review');
+    const response = await fetch(`${apiBase}/api/servicenow/tickets/draft`, { method: 'POST' });
+    setTicketDraft(await response.json());
+    setTicketModalOpen(true);
+    setActionStatus('ticket ready for review');
+  }
+
+  async function submitTicket() {
+    setActionStatus('submitting ticket');
     const response = await fetch(`${apiBase}/api/servicenow/tickets`, { method: 'POST' });
-    setTicket(await response.json());
-    setActionStatus('ServiceNow ticket ready');
+    const saved = await response.json();
+    setTicket(saved);
+    setSavedTickets((current) => [saved, ...current].slice(0, 20));
+    setTicketModalOpen(false);
+    setActionStatus('ticket saved');
   }
 
   async function buildConfig() {
@@ -309,8 +344,31 @@ function App() {
     setActionStatus('config recommendations ready');
   }
 
+  async function applyConfigAutomation() {
+    setActionStatus('applying config guardrail');
+    const response = await fetch(`${apiBase}/api/config/automation`, { method: 'POST' });
+    const automation = await response.json();
+    setAutomations((current) => [automation, ...current].slice(0, 10));
+    setActionStatus('config guardrail applied');
+  }
+
   async function importAzureOrg() {
-    setActionStatus('importing Azure subscription inventory');
+    if (authSession?.mode === 'azure' && !authSession.authenticated) {
+      setActionStatus('Azure sign-in required');
+      window.location.href = `${apiBase}${authSession.login_url || '/auth/login'}`;
+      return;
+    }
+    if (authSession?.mode !== 'azure') {
+      setAzureModalOpen(true);
+      setActionStatus('Azure SSO not configured locally');
+      return;
+    }
+    await importAzureSample('connected');
+  }
+
+  async function importAzureSample(source: 'local' | 'connected' = 'local') {
+    setAzureModalOpen(false);
+    setActionStatus(source === 'connected' ? 'importing connected Azure inventory' : 'importing local Azure inventory sample');
     const response = await fetch(`${apiBase}/api/org/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Tenant': 'demo' },
@@ -322,8 +380,9 @@ function App() {
         region: 'eastus',
         assets: [
           { id: 'az-fw-prod', type: 'network', name: 'Azure Firewall Prod', owner: 'it-ops', environment: 'prod', region: 'eastus', service: 'network-security', version: 17, dependencies: ['network-edge-router'], risk: 'high' },
-          { id: 'az-aks-support', type: 'service', name: 'AKS Support Workloads', owner: 'platform', environment: 'prod', region: 'eastus', service: 'support-platform', version: 29, dependencies: ['queue-inventory-events', 'opensearch-assets'], risk: 'medium' },
-          { id: 'az-kv-config', type: 'database', name: 'Key Vault Config Store', owner: 'security', environment: 'prod', region: 'eastus', service: 'secure-config', version: 13, dependencies: [], risk: 'medium' }
+          { id: 'az-aks-support', type: 'kubernetes', name: 'AKS Support Cluster', owner: 'platform', environment: 'prod', region: 'eastus', service: 'support-platform', version: 29, dependencies: ['queue-inventory-events', 'opensearch-assets'], risk: 'medium' },
+          { id: 'az-aks-cve-worker', type: 'container', name: 'CVE Worker Container', owner: 'ml-platform', environment: 'prod', region: 'eastus', service: 'risk-knowledge', version: 11, dependencies: ['az-aks-support', 'opensearch-assets'], risk: 'high' },
+          { id: 'az-kv-config', type: 'keyvault', name: 'Key Vault Config Store', owner: 'security', environment: 'prod', region: 'eastus', service: 'secure-config', version: 13, dependencies: ['az-aks-support'], risk: 'medium' }
         ]
       })
     });
@@ -437,6 +496,16 @@ function App() {
     low: assets.filter((asset) => asset.risk === 'low').length
   }), [assets]);
 
+  useEffect(() => {
+    if (!assets.length) {
+      setSelectedAssetId('');
+      return;
+    }
+    if (!selectedAssetId || !assets.some((asset) => asset.id === selectedAssetId)) {
+      setSelectedAssetId((assets.find((asset) => asset.risk === 'high') ?? assets[0]).id);
+    }
+  }, [assets, selectedAssetId]);
+
   const story = topology?.story ?? {
     mission: 'Keep local office support teams from guessing which endpoint, service, or dependency broke.',
     vision: 'Turn branch network changes into a searchable ServiceNow-ready CMDB stream within minutes.',
@@ -462,6 +531,9 @@ function App() {
   const meshLabels = ['REST upsert', 'Kafka event', 'consumer group', 'document write', 'search read'];
   const latestEvent = events[events.length - 1];
   const topFinding = analysis?.findings?.[0];
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
+  const selectedFinding = selectedAsset ? analysis?.findings.find((finding) => finding.asset_name === selectedAsset.name) : undefined;
+  const latestAutomation = automations[0];
 
   return (
     <main>
@@ -491,57 +563,16 @@ function App() {
         </div>
       </section>
 
-      <section className="workbench">
-        <div className="panel attachPanel">
-          <div className="panelHeader">
-            <h2>Attach Infrastructure</h2>
-            <span>{attachResult}</span>
-          </div>
-          <textarea
-            value={attachment}
-            onChange={(event) => setAttachment(event.target.value)}
-            spellCheck={false}
-            aria-label="Inventory JSON payload"
-          />
-          <div className="workbenchActions">
-            <button onClick={() => attachInventory()}><Box size={17} />Attach JSON</button>
-            <button onClick={() => importAzureOrg()}><Cloud size={17} />Import Azure sample</button>
-            <button onClick={() => generateKnowledge()}><BarChart3 size={17} />Generate knowledge</button>
-          </div>
+      <section className="commandBar">
+        <div>
+          <strong>{assets.length} assets</strong>
+          <span>{risks.high} high risk · {events.length} stream events · {status} · {attachResult}</span>
         </div>
-
-        <div className="panel knowledgePanel">
-          <div className="panelHeader">
-            <h2>Knowledge Snapshot</h2>
-            <span>{actionStatus}</span>
-          </div>
-          <div className="knowledgeCards">
-            <div>
-              <span>Search index</span>
-              <strong>{assets.length} assets</strong>
-              <em>{latestEvent ? latestEvent.payload.name : 'waiting for first event'}</em>
-            </div>
-            <div>
-              <span>CVE risk</span>
-              <strong>{topFinding ? `${topFinding.score.toFixed(1)} ${topFinding.severity}` : `${risks.high} high`}</strong>
-              <em>{topFinding?.asset_name ?? 'run scoring'}</em>
-            </div>
-            <div>
-              <span>Config learning</span>
-              <strong>{configIntel ? `${configIntel.proposals.length} proposals` : config?.version ?? 'config'}</strong>
-              <em>{configIntel?.observed_services.slice(0, 3).join(', ') || 'build from inventory'}</em>
-            </div>
-            <div>
-              <span>Evidence</span>
-              <strong>{ticket?.number ?? 'not created'}</strong>
-              <em>{ticket?.assignment_group ?? 'create ticket payload'}</em>
-            </div>
-          </div>
-          <div className="workbenchActions">
-            <button onClick={() => startAnalysis()}><ShieldAlert size={17} />Score CVEs</button>
-            <button onClick={() => buildConfig()}><SlidersHorizontal size={17} />Suggest config</button>
-            <button onClick={() => createTicket()}><TicketCheck size={17} />Create ticket</button>
-          </div>
+        <div className="commandActions">
+          <button onClick={() => attachInventory()}><PlusCircle size={17} />Add sample</button>
+          <button onClick={() => importAzureOrg()}><Cloud size={17} />Azure import</button>
+          <button onClick={() => generateKnowledge()}><BarChart3 size={17} />Generate</button>
+          <button onClick={() => applyConfigAutomation()}><CheckCircle2 size={17} />Apply guardrail</button>
         </div>
       </section>
 
@@ -597,11 +628,21 @@ function App() {
           </div>
           <div className="workbenchActions">
             <button onClick={() => putTopFindingOnCooldown()}><PauseCircle size={17} />Put on cooldown</button>
-            <button onClick={() => createTicket()}><TicketCheck size={17} />Write ticket</button>
+            <button onClick={() => reviewTicket()}><TicketCheck size={17} />Review ticket</button>
           </div>
           <div className="cooldownList">
             {cooldownAssets.map((asset) => <code key={asset}>{asset}</code>)}
             {!cooldownAssets.length && <span>Cooldown isolates the riskiest CI while the ticket carries CVE findings, evidence images, and config notes.</span>}
+          </div>
+          <div className="savedTicketList">
+            <strong>Saved tickets</strong>
+            {savedTickets.slice(0, 3).map((item) => (
+              <button key={item.number} onClick={() => setTicket(item)}>
+                <span>{item.number}</span>
+                <em>{item.configuration_items.join(', ') || 'no CI'}</em>
+              </button>
+            ))}
+            {!savedTickets.length && <span>No submitted tickets yet.</span>}
           </div>
         </div>
       </section>
@@ -647,6 +688,129 @@ function App() {
         </Metric>
       </section>
 
+      <section className={`inventoryConsole ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`}>
+        <div className="panel assetListPanel">
+          <div className="panelHeader">
+            <h2>Inventory</h2>
+            <span>{assets.length} indexed</span>
+          </div>
+          <div className="searchMini">
+            <Search size={17} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && refresh()}
+              placeholder="Search assets, owners, services"
+            />
+            <button onClick={() => refresh()}>Search</button>
+          </div>
+          <div className="assetRows">
+            {assets.map((asset) => {
+              const finding = analysis?.findings.find((item) => item.asset_name === asset.name);
+              return (
+                <button
+                  className={`assetRow ${selectedAsset?.id === asset.id ? 'selected' : ''}`}
+                  key={asset.id}
+                  onClick={() => setSelectedAssetId(asset.id)}
+                >
+                  <span className={`nodeDot ${asset.risk}`} />
+                  <span>
+                    <strong>{asset.name}</strong>
+                    <em>{asset.type} · {asset.service}</em>
+                  </span>
+                  <code>{finding ? finding.score.toFixed(1) : asset.risk}</code>
+                </button>
+              );
+            })}
+            {assets.length === 0 && <div className="empty">Attach JSON or import Azure sample to start.</div>}
+          </div>
+        </div>
+
+        <div className="panel topologyPanel">
+          <div className="panelHeader">
+            <h2>Live Infra Map</h2>
+            <span>{assets.reduce((count, asset) => count + asset.dependencies.length, 0)} links</span>
+          </div>
+          <TopologyMap
+            assets={assets}
+            selectedId={selectedAsset?.id ?? ''}
+            findings={analysis?.findings ?? []}
+            onSelect={setSelectedAssetId}
+          />
+        </div>
+
+        <aside className="panel inspectorPanel">
+          <div className="panelHeader">
+            <h2>Asset Detail</h2>
+            <span>{selectedAsset?.risk ?? 'none'}</span>
+          </div>
+          {selectedAsset ? (
+            <div className="assetInspector">
+              <div>
+                <strong>{selectedAsset.name}</strong>
+                <span>{selectedAsset.type} · {selectedAsset.owner} · {selectedAsset.region}</span>
+              </div>
+              <div className="inspectorStats">
+                <span><b>{selectedAsset.dependencies.length}</b> deps</span>
+                <span><b>{selectedFinding ? selectedFinding.score.toFixed(1) : '-'}</b> CVE</span>
+                <span><b>{selectedAsset.version}</b> version</span>
+              </div>
+              <div className="dependencyChips">
+                {selectedAsset.dependencies.map((dep) => <button key={dep} onClick={() => setSelectedAssetId(dep)}>{dep}</button>)}
+                {!selectedAsset.dependencies.length && <span>No dependencies</span>}
+              </div>
+              <div className="findingNote">
+                <ShieldAlert size={18} />
+                <span>{selectedFinding?.remediation ?? 'Run CVE scoring to attach risk and remediation to this asset.'}</span>
+              </div>
+              <div className="workbenchActions tightActions">
+                <button onClick={() => startAnalysis()}><ShieldAlert size={17} />Score</button>
+                <button onClick={() => putTopFindingOnCooldown()}><PauseCircle size={17} />Cooldown</button>
+                <button onClick={() => reviewTicket()}><TicketCheck size={17} />Ticket</button>
+              </div>
+            </div>
+          ) : <div className="empty">No selected asset.</div>}
+        </aside>
+      </section>
+
+      <section className={`automationConsole ${page !== 'config' && page !== 'overview' ? 'hidden' : ''}`}>
+        <div className="panel automationPanel">
+          <div className="panelHeader">
+            <h2>Configuration Automation</h2>
+            <span>{latestAutomation?.status ?? 'ready'}</span>
+          </div>
+          <div className="automationBody">
+            <div className="automationHero">
+              <SlidersHorizontal size={20} />
+              <div>
+                <strong>{latestAutomation?.policy ?? 'inventory-risk-guardrail'}</strong>
+                <span>{latestAutomation ? `${latestAutomation.guardrails.length} guardrails · replay window ${latestAutomation.replay_window}` : 'Apply routing, evidence, and stateful-asset guardrails from current inventory.'}</span>
+              </div>
+            </div>
+            <div className="guardrailGrid">
+              {(latestAutomation?.guardrails ?? ['route high CVEs by owner', 'require stateful dependency evidence', 'align search fields to support lookups']).map((item) => <code key={item}>{item}</code>)}
+            </div>
+            <div className="workbenchActions tightActions">
+              <button onClick={() => buildConfig()}><BarChart3 size={17} />Preview</button>
+              <button onClick={() => applyConfigAutomation()}><CheckCircle2 size={17} />Apply guardrail</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel azurePanel">
+          <div className="panelHeader">
+            <h2>Azure Integration</h2>
+            <span>{imports[0]?.provider ?? 'dev'}</span>
+          </div>
+          <div className="azureBody">
+            <Cloud size={22} />
+            <strong>{imports[0]?.account_id ?? 'No cloud import yet'}</strong>
+            <span>{imports[0] ? `${imports[0].imported_assets} assets · ${imports[0].encrypted_in_transit}` : 'Import an Azure subscription sample or wire Entra ID in cloud mode.'}</span>
+            <button onClick={() => importAzureOrg()}><Cloud size={17} />Connect / import</button>
+          </div>
+        </div>
+      </section>
+
       <section className={`pipeline ${page !== 'overview' ? 'hidden' : ''}`}>
         <Step tone="yellow" icon={<Building2 />} label="YAML / Cloud Import" detail="existing infra files or Azure account data" />
         <Step tone="blue" icon={<Box />} label="Go API" detail="validates and publishes changes" />
@@ -673,9 +837,9 @@ function App() {
               <SlidersHorizontal size={17} />
               Suggest config
             </button>
-            <button onClick={() => createTicket()}>
+            <button onClick={() => reviewTicket()}>
               <PlayCircle size={17} />
-              Create ticket
+              Review ticket
             </button>
           </div>
           <div className="signalGrid">
@@ -823,7 +987,7 @@ function App() {
               </div>
               <button onClick={() => importAzureOrg()}>
                 <Cloud size={17} />
-                Import Azure subscription sample
+                Connect / import Azure
               </button>
               <div className="proposalList">
                 {imports.map((item) => (
@@ -864,7 +1028,7 @@ function App() {
         </section>
       </details>
 
-      <section className={`meshPanel ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`}>
+      <section className={`meshPanel ${page !== 'data' ? 'hidden' : ''}`}>
         <div className="panelHeader">
           <h2>Local Office Topology</h2>
           <span>ServiceNow support path</span>
@@ -906,7 +1070,7 @@ function App() {
               <CodeLine method="1" path="make demo" note="starts Go API, indexer, web, Kafka-compatible Redpanda, and OpenSearch" />
               <CodeLine method="2" path="make import FILE=examples/local-office.yaml" note="loads existing YAML/JSON inventory into the API" />
               <CodeLine method="3" path="POST /api/security/analyze" note="scores CVE risk from the indexed infrastructure graph" />
-              <CodeLine method="4" path="POST /api/config/recommendations" note="builds better config from observed services, owners, and risk" />
+              <CodeLine method="4" path="POST /api/config/automation" note="applies a guardrail preview from observed services, owners, and risk" />
             </div>
           </div>
 
@@ -921,7 +1085,8 @@ function App() {
               <CodeLine method="GET" path="/api/topology" note="mesh read model" />
               <CodeLine method="GET" path="/api/analytics" note="ops snapshot" />
               <CodeLine method="POST" path="/api/security/analyze" note="ML-style CVE scoring" />
-              <CodeLine method="POST" path="/api/config/recommendations" note="AI-assisted config proposal" />
+              <CodeLine method="POST" path="/api/config/recommendations" note="configuration proposal" />
+              <CodeLine method="POST" path="/api/config/automation" note="apply guardrail preview" />
               <CodeLine method="POST" path="/api/servicenow/tickets" note="ServiceNow ticket" />
               <CodeLine method="GET" path="/api/auth/session" note="encrypted session status" />
               <CodeLine method="POST" path="/api/org/import" note="cloud account inventory import" />
@@ -983,7 +1148,7 @@ function App() {
         </div>
       </details>
 
-      <section className={`toolbar ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`}>
+      <section className={`toolbar ${page !== 'data' ? 'hidden' : ''}`}>
         <Search size={18} />
         <input
           value={query}
@@ -994,7 +1159,7 @@ function App() {
         <button onClick={() => refresh()}>Search</button>
       </section>
 
-      <section className={`grid ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`}>
+      <section className={`grid ${page !== 'data' ? 'hidden' : ''}`}>
         <div className="panel inventoryPanel">
           <div className="panelHeader">
             <h2>Inventory</h2>
@@ -1039,8 +1204,170 @@ function App() {
           </div>
         </aside>
       </section>
+
+      {ticketModalOpen && ticketDraft && (
+        <div className="modalBackdrop" role="presentation" onClick={() => setTicketModalOpen(false)}>
+          <section className="modalPanel" role="dialog" aria-modal="true" aria-label="Review ServiceNow ticket" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <span>Ticket Review</span>
+                <h2>{ticketDraft.number}</h2>
+              </div>
+              <button className="iconButton" onClick={() => setTicketModalOpen(false)} title="Close ticket review">X</button>
+            </div>
+            <div className="ticketReview">
+              <div className="reviewHero">
+                <TicketCheck size={22} />
+                <div>
+                  <strong>{ticketDraft.short_description}</strong>
+                  <span>{ticketDraft.table} · priority {ticketDraft.priority} · {ticketDraft.assignment_group}</span>
+                </div>
+              </div>
+              <div className="reviewGrid">
+                <div>
+                  <strong>Configuration items</strong>
+                  <div className="dependencyChips">
+                    {ticketDraft.configuration_items.map((item) => <button key={item}>{item}</button>)}
+                    {!ticketDraft.configuration_items.length && <span>No impacted CI found.</span>}
+                  </div>
+                </div>
+                <div>
+                  <strong>Evidence</strong>
+                  <span>{evidence.length} image attachments · {events.length} replay events · {analysis?.findings.length ?? 0} CVE findings</span>
+                </div>
+              </div>
+              <div className="workNotes">
+                {ticketDraft.work_notes.map((note) => <code key={note}>{note}</code>)}
+              </div>
+              <div className="modalActions">
+                <button onClick={() => setTicketModalOpen(false)}>Keep draft</button>
+                <button onClick={() => submitTicket()}><CheckCircle2 size={17} />Submit ticket</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {azureModalOpen && (
+        <div className="modalBackdrop" role="presentation" onClick={() => setAzureModalOpen(false)}>
+          <section className="modalPanel azureModal" role="dialog" aria-modal="true" aria-label="Connect Azure inventory" onClick={(event) => event.stopPropagation()}>
+            <div className="modalHeader">
+              <div>
+                <span>Azure Inventory</span>
+                <h2>Connect Entra ID or use a local sample</h2>
+              </div>
+              <button className="iconButton" onClick={() => setAzureModalOpen(false)} title="Close Azure onboarding">X</button>
+            </div>
+            <div className="ticketReview">
+              <div className="reviewHero">
+                <Cloud size={22} />
+                <div>
+                  <strong>Local mode has no Azure token.</strong>
+                  <span>Use the sample to fingerprint Azure Firewall, AKS, container worker, and Key Vault assets, or enable Azure SSO to route imports through Entra ID.</span>
+                </div>
+              </div>
+              <div className="workNotes">
+                <code>AUTH_MODE=azure</code>
+                <code>AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET</code>
+                <code>AUTH_SESSION_KEY=$(openssl rand -base64 32)</code>
+              </div>
+              <div className="modalActions">
+                <a className="linkButton" href={`${apiBase}${authSession?.login_url ?? '/auth/login'}`}>Start SSO</a>
+                <button onClick={() => importAzureSample('local')}><Cloud size={17} />Use local Azure sample</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
+}
+
+function TopologyMap({
+  assets,
+  selectedId,
+  findings,
+  onSelect,
+}: {
+  assets: Asset[];
+  selectedId: string;
+  findings: CVEAnalysis['findings'];
+  onSelect: (id: string) => void;
+}) {
+  const visible = assets.slice(0, 18);
+  const positions = new Map<string, { x: number; y: number }>();
+  const cols = Math.min(6, Math.max(1, Math.ceil(Math.sqrt(Math.max(visible.length, 1)))));
+  visible.forEach((asset, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    positions.set(asset.id, {
+      x: 76 + col * 132 + (row % 2) * 26,
+      y: 72 + row * 112,
+    });
+  });
+  const links = visible.flatMap((asset) => (
+    asset.dependencies
+      .filter((dep) => positions.has(dep))
+      .map((dep) => ({ from: asset.id, to: dep }))
+  ));
+  const height = Math.max(260, 120 + Math.ceil(visible.length / Math.max(cols, 1)) * 112);
+  const scoreByAsset = new Map(findings.map((finding) => [finding.asset_name, finding.score]));
+
+  return (
+    <div className="topologyCanvas">
+      <svg viewBox={`0 0 840 ${height}`} role="img" aria-label="Live infrastructure dependency map">
+        {links.map((link) => {
+          const from = positions.get(link.from)!;
+          const to = positions.get(link.to)!;
+          return <line key={`${link.from}-${link.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
+        })}
+        {visible.map((asset) => {
+          const point = positions.get(asset.id)!;
+          const score = scoreByAsset.get(asset.name);
+          return (
+            <g
+              className={`topologyNode ${asset.risk} ${selectedId === asset.id ? 'selected' : ''}`}
+              key={asset.id}
+              onClick={() => onSelect(asset.id)}
+              tabIndex={0}
+              role="button"
+            >
+              <circle cx={point.x} cy={point.y} r={26} />
+              <text x={point.x} y={point.y + 4} textAnchor="middle">{shortKind(asset.type)}</text>
+              <text className="nodeLabel" x={point.x} y={point.y + 45} textAnchor="middle">{asset.name}</text>
+              <text className="nodeScore" x={point.x} y={point.y + 62} textAnchor="middle">{score ? `CVE ${score.toFixed(1)}` : asset.owner}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {!assets.length && <div className="empty">Import or attach inventory to plot the dependency map.</div>}
+    </div>
+  );
+}
+
+function shortKind(kind: string) {
+  switch (kind) {
+    case 'database':
+      return 'DB';
+    case 'network':
+      return 'NET';
+    case 'endpoint':
+      return 'END';
+    case 'queue':
+      return 'Q';
+    case 'worker':
+      return 'WK';
+    case 'frontend':
+      return 'UI';
+    case 'kubernetes':
+      return 'K8S';
+    case 'container':
+      return 'CTR';
+    case 'keyvault':
+      return 'KV';
+    default:
+      return 'API';
+  }
 }
 
 function Step({ icon, label, detail, tone }: { icon: React.ReactNode; label: string; detail: string; tone: string }) {

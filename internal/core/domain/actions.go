@@ -41,3 +41,15 @@ type ConfigIntelligence struct {
 	ServiceNowRouting map[string]string `json:"servicenow_routing"`
 	PreviewConfig     map[string]any    `json:"preview_config"`
 }
+
+type ConfigAutomation struct {
+	AutomationID  string            `json:"automation_id"`
+	AppliedAt     time.Time         `json:"applied_at"`
+	Status        string            `json:"status"`
+	Policy        string            `json:"policy"`
+	Guardrails    []string          `json:"guardrails"`
+	Routes        map[string]string `json:"routes"`
+	ReplayWindow  int               `json:"replay_window"`
+	AffectedTypes []string          `json:"affected_types"`
+	Evidence      []string          `json:"evidence"`
+}

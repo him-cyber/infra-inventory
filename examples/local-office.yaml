@@ -64,3 +64,38 @@ assets:
     version: 7
     dependencies: []
     risk: medium
+  - id: aks-support-prod
+    type: kubernetes
+    name: AKS Support Cluster
+    owner: platform
+    environment: prod
+    region: eastus
+    service: support-platform
+    version: 29
+    dependencies:
+      - kafka-inventory-events
+      - os-inventory-index
+    risk: medium
+  - id: ctn-agent-cve-worker
+    type: container
+    name: CVE Worker Container
+    owner: ml-platform
+    environment: prod
+    region: eastus
+    service: risk-knowledge
+    version: 11
+    dependencies:
+      - aks-support-prod
+      - os-inventory-index
+    risk: high
+  - id: kv-inventory-secrets
+    type: keyvault
+    name: Inventory Key Vault
+    owner: security
+    environment: prod
+    region: eastus
+    service: secure-config
+    version: 16
+    dependencies:
+      - aks-support-prod
+    risk: medium

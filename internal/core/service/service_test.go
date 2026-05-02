@@ -51,7 +51,7 @@ func TestUpsertPublishesAndRecordsRecentEvent(t *testing.T) {
 	}
 	pub := &memoryPublisher{}
 	service := NewService(cfg, pub, memoryStore{}, ring.New[domain.Event](8), ratelimit.NewLimiter(), "inventory.events")
-	event, err := service.UpsertAsset(context.Background(), "demo", domain.Asset{Type: "service", Name: "Catalog", Version: 1})
+	event, err := service.UpsertAsset(context.Background(), "demo", domain.Asset{Type: "service", Name: "Catalog", Owner: "platform", Environment: "prod", Region: "us-east", Service: "catalog", Risk: "low", Version: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

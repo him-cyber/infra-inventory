@@ -104,7 +104,7 @@ h2 {
   color: #ffffff;
 }
 
-.ribbon, .stats, .pipeline, .launchStrip {
+.ribbon, .stats, .pipeline, .launchStrip, .workbench, .remediationWorkbench {
   display: grid;
   gap: 12px;
   margin-bottom: 16px;
@@ -1037,7 +1037,7 @@ input {
 }
 
 @media (max-width: 860px) {
-  .ribbon, .stats, .pipeline, .actionGrid, .assistGrid, .explainGrid, .grid, .endpointGrid, .teamGrid, .signalGrid, .intelligenceGrid, .routingGrid {
+  .ribbon, .stats, .pipeline, .workbench, .remediationWorkbench, .actionGrid, .assistGrid, .explainGrid, .grid, .endpointGrid, .teamGrid, .signalGrid, .intelligenceGrid, .routingGrid, .knowledgeCards {
     grid-template-columns: 1fr;
   }
 
@@ -1066,5 +1066,205 @@ input {
 
   h1 {
     font-size: 1.7rem;
+  }
+}
+
+.workbench, .remediationWorkbench {
+  grid-template-columns: minmax(360px, 0.95fr) minmax(0, 1.05fr);
+}
+
+.attachPanel, .knowledgePanel, .dropPanel, .remediationPanel {
+  min-height: 0;
+}
+
+.attachPanel textarea {
+  background: #0b1220;
+  border: 0;
+  color: #e5f7ef;
+  display: block;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.42;
+  min-height: 210px;
+  outline: 0;
+  padding: 14px 16px;
+  resize: vertical;
+  width: 100%;
+}
+
+.workbenchActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.workbenchActions button {
+  gap: 8px;
+}
+
+.knowledgeCards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 14px 16px 0;
+}
+
+.knowledgeCards div {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #56d364;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  min-height: 96px;
+  padding: 12px;
+}
+
+.knowledgeCards div:nth-child(2) {
+  border-left-color: #f43f5e;
+}
+
+.knowledgeCards div:nth-child(3) {
+  border-left-color: #0ea5e9;
+}
+
+.knowledgeCards div:nth-child(4) {
+  border-left-color: #facc15;
+}
+
+.knowledgeCards span, .knowledgeCards em {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.knowledgeCards strong {
+  font-size: 1.04rem;
+  overflow-wrap: anywhere;
+}
+
+.dropZone {
+  align-items: center;
+  background: linear-gradient(135deg, #ecfdf5, #eff6ff);
+  border: 2px dashed #38bdf8;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin: 14px 16px;
+  min-height: 142px;
+  padding: 18px;
+  text-align: center;
+}
+
+.dropZone input {
+  display: none;
+}
+
+.dropZone svg {
+  color: #0b6f43;
+}
+
+.dropZone span {
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  max-width: 360px;
+}
+
+.evidenceList {
+  display: grid;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.evidenceItem {
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  padding: 8px;
+}
+
+.evidenceItem img {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  object-fit: cover;
+  width: 58px;
+}
+
+.evidenceItem div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.evidenceItem strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidenceItem span, .cooldownList span, .hardeningCard span {
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.hardeningCard {
+  align-items: start;
+  background: #111827;
+  border-left: 4px solid #56d364;
+  color: #ffffff;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  margin: 14px 16px 0;
+  padding: 14px;
+}
+
+.hardeningCard svg {
+  color: #facc15;
+}
+
+.hardeningCard div {
+  display: grid;
+  gap: 5px;
+}
+
+.hardeningCard span {
+  color: #d7e2ef;
+}
+
+.cooldownList {
+  border-top: 1px solid #e5edf6;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px 16px;
+}
+
+.cooldownList code {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 999px;
+  color: #be123c;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 6px 9px;
+}
+
+@media (max-width: 860px) {
+  .workbench, .remediationWorkbench, .knowledgeCards {
+    grid-template-columns: 1fr;
   }
 }

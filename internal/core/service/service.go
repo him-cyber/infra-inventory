@@ -13,6 +13,7 @@ import (
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/kafka"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/domain"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/security"
+	"github.com/him-cyber/infra-inventory-stream/internal/core/validate"
 	"github.com/him-cyber/infra-inventory-stream/internal/platform/ds/ratelimit"
 	"github.com/him-cyber/infra-inventory-stream/internal/platform/ds/ring"
 	"github.com/him-cyber/infra-inventory-stream/internal/platform/observability"
@@ -39,6 +40,15 @@ func NewService(cfg *config.Manager, pub kafka.Publisher, store SearchStore, rec
 }
 
 func (s *Service) UpsertAsset(ctx context.Context, tenant string, asset domain.Asset) (domain.Event, error) {
+	var err error
+	tenant, err = validate.Tenant(tenant)
+	if err != nil {
+		return domain.Event{}, err
+	}
+	asset, err = validate.Asset(asset)
+	if err != nil {
+		return domain.Event{}, err
+	}
 	if asset.ID == "" {
 		asset.ID = uuid.NewString()
 	}
@@ -78,6 +88,10 @@ func (s *Service) UpsertAsset(ctx context.Context, tenant string, asset domain.A
 }
 
 func (s *Service) Search(ctx context.Context, q domain.SearchQuery) (domain.SearchResult, error) {
+	q, err := validate.SearchQuery(q)
+	if err != nil {
+		return domain.SearchResult{}, err
+	}
 	return s.store.Search(ctx, q, s.config.Snapshot().SearchFields)
 }
 
@@ -91,6 +105,10 @@ func (s *Service) Topology(ctx context.Context) (domain.SupportTopology, error) 
 }
 
 func (s *Service) GetAsset(ctx context.Context, id string) (domain.Asset, bool, error) {
+	id, err := validate.AssetID(id)
+	if err != nil {
+		return domain.Asset{}, false, err
+	}
 	return s.store.GetAsset(ctx, id)
 }
 

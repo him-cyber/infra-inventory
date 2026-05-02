@@ -24,6 +24,9 @@ import {
   PlayCircle,
   SlidersHorizontal,
   UserRound,
+  Upload,
+  PauseCircle,
+  Wrench,
 } from 'lucide-react';
 import './styles.css';
 
@@ -147,7 +150,57 @@ type OrgImport = {
   created_at: string;
 };
 
+type EvidenceItem = {
+  id: string;
+  name: string;
+  url: string;
+  size: string;
+  status: string;
+};
+
 const apiBase = import.meta.env.VITE_API_URL ?? '';
+
+const sampleInventoryPayload = JSON.stringify({
+  assets: [
+    {
+      id: 'branch-vpn-gateway',
+      type: 'network',
+      name: 'Branch VPN Gateway',
+      owner: 'it-ops',
+      environment: 'prod',
+      region: 'us-east-office',
+      service: 'office-connectivity',
+      version: 31,
+      dependencies: ['az-fw-prod', 'queue-inventory-events'],
+      risk: 'high'
+    },
+    {
+      id: 'agent-assist-api',
+      type: 'service',
+      name: 'Agent Assist API',
+      owner: 'product',
+      environment: 'prod',
+      region: 'us-east-office',
+      service: 'servicenow-support',
+      version: 44,
+      dependencies: ['opensearch-assets', 'queue-inventory-events'],
+      risk: 'medium'
+    },
+    {
+      id: 'knowledge-worker',
+      type: 'worker',
+      name: 'Knowledge Generator Worker',
+      owner: 'ml-platform',
+      environment: 'prod',
+      region: 'us-east-office',
+      service: 'risk-knowledge',
+      version: 18,
+      dependencies: ['agent-assist-api', 'opensearch-assets'],
+      risk: 'medium'
+    }
+  ]
+}, null, 2);
+
 
 const dataContracts = [
   {
@@ -195,6 +248,10 @@ function App() {
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [imports, setImports] = useState<OrgImport[]>([]);
   const [actionStatus, setActionStatus] = useState('ready');
+  const [attachment, setAttachment] = useState(sampleInventoryPayload);
+  const [attachResult, setAttachResult] = useState('ready for inventory');
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
+  const [cooldownAssets, setCooldownAssets] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [config, setConfig] = useState<{ version: string; updated_at: string; replay_window: number } | null>(null);
   const [status, setStatus] = useState('checking');
@@ -276,6 +333,87 @@ function App() {
     await refresh();
   }
 
+  async function attachInventory() {
+    try {
+      setActionStatus('attaching inventory');
+      const parsed = JSON.parse(attachment) as { assets?: Asset[] } | Asset[];
+      const items = Array.isArray(parsed) ? parsed : parsed.assets;
+      if (!items?.length) {
+        throw new Error('expected { "assets": [...] } or an asset array');
+      }
+      for (const asset of items) {
+        const response = await fetch(`${apiBase}/api/assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Tenant': 'demo' },
+          body: JSON.stringify(asset),
+        });
+        if (!response.ok) {
+          throw new Error(`asset ${asset.id || asset.name} failed with HTTP ${response.status}`);
+        }
+      }
+      setAttachResult(`${items.length} assets attached and streamed`);
+      setActionStatus('inventory attached');
+      await refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'invalid inventory payload';
+      setAttachResult(message);
+      setActionStatus('attach failed');
+    }
+  }
+
+  async function generateKnowledge() {
+    setActionStatus('generating knowledge');
+    const [analyticsResp, analysisResp, configResp] = await Promise.all([
+      fetch(`${apiBase}/api/analytics`),
+      fetch(`${apiBase}/api/security/analyze`, { method: 'POST' }),
+      fetch(`${apiBase}/api/config/recommendations`, { method: 'POST' }),
+    ]);
+    setAnalytics(await analyticsResp.json());
+    setAnalysis(await analysisResp.json());
+    setConfigIntel(await configResp.json());
+    setActionStatus('knowledge ready');
+    await refresh();
+  }
+
+  function attachEvidenceFiles(files: FileList | File[]) {
+    const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (!images.length) {
+      setActionStatus('drop image evidence only');
+      return;
+    }
+    setEvidence((current) => [
+      ...images.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${file.size}`,
+        name: file.name,
+        url: URL.createObjectURL(file),
+        size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+        status: 'attached as ticket evidence',
+      })),
+      ...current,
+    ].slice(0, 8));
+    setActionStatus(`${images.length} evidence image${images.length === 1 ? '' : 's'} attached`);
+  }
+
+  function putTopFindingOnCooldown() {
+    const target = topFinding?.asset_name ?? assets.find((asset) => asset.risk === 'high')?.name;
+    if (!target) {
+      setActionStatus('run CVE scoring first');
+      return;
+    }
+    setCooldownAssets((current) => current.includes(target) ? current : [target, ...current].slice(0, 5));
+    setActionStatus(`${target} queued for cooldown`);
+  }
+
+  function hardeningNote() {
+    if (topFinding) {
+      return topFinding.remediation;
+    }
+    if (cooldownAssets.length) {
+      return `Hold traffic for ${cooldownAssets[0]} until owner review, patch window, and config replay complete.`;
+    }
+    return 'Run CVE scoring, attach evidence, then queue weak infrastructure for cooldown.';
+  }
+
   function changePage(next: string) {
     setPage(next);
     window.location.hash = next;
@@ -330,8 +468,8 @@ function App() {
       <header className="topbar">
         <div>
           <p className="eyebrow">Core Infrastructure Inventory</p>
-          <h1>ServiceNow Office Support Topology</h1>
-          <p className="subtitle">A local-office inventory pipeline for ServiceNow-style CMDB, support workflow, and change evidence. Go services stream endpoint updates through Kafka and index searchable operational state in OpenSearch.</p>
+          <h1>Infra Knowledge Console</h1>
+          <p className="subtitle">Attach infrastructure data, generate searchable operational knowledge, score CVE risk, and produce ServiceNow-ready evidence.</p>
         </div>
         <button className="iconButton" onClick={() => refresh()} title="Refresh dashboard">
           <RefreshCcw size={18} />
@@ -353,22 +491,118 @@ function App() {
         </div>
       </section>
 
-      <section className="launchStrip">
-        <div>
-          <span>Launch</span>
-          <code>make demo</code>
+      <section className="workbench">
+        <div className="panel attachPanel">
+          <div className="panelHeader">
+            <h2>Attach Infrastructure</h2>
+            <span>{attachResult}</span>
+          </div>
+          <textarea
+            value={attachment}
+            onChange={(event) => setAttachment(event.target.value)}
+            spellCheck={false}
+            aria-label="Inventory JSON payload"
+          />
+          <div className="workbenchActions">
+            <button onClick={() => attachInventory()}><Box size={17} />Attach JSON</button>
+            <button onClick={() => importAzureOrg()}><Cloud size={17} />Import Azure sample</button>
+            <button onClick={() => generateKnowledge()}><BarChart3 size={17} />Generate knowledge</button>
+          </div>
         </div>
-        <div>
-          <span>Import YAML</span>
-          <code>make import FILE=examples/local-office.yaml</code>
+
+        <div className="panel knowledgePanel">
+          <div className="panelHeader">
+            <h2>Knowledge Snapshot</h2>
+            <span>{actionStatus}</span>
+          </div>
+          <div className="knowledgeCards">
+            <div>
+              <span>Search index</span>
+              <strong>{assets.length} assets</strong>
+              <em>{latestEvent ? latestEvent.payload.name : 'waiting for first event'}</em>
+            </div>
+            <div>
+              <span>CVE risk</span>
+              <strong>{topFinding ? `${topFinding.score.toFixed(1)} ${topFinding.severity}` : `${risks.high} high`}</strong>
+              <em>{topFinding?.asset_name ?? 'run scoring'}</em>
+            </div>
+            <div>
+              <span>Config learning</span>
+              <strong>{configIntel ? `${configIntel.proposals.length} proposals` : config?.version ?? 'config'}</strong>
+              <em>{configIntel?.observed_services.slice(0, 3).join(', ') || 'build from inventory'}</em>
+            </div>
+            <div>
+              <span>Evidence</span>
+              <strong>{ticket?.number ?? 'not created'}</strong>
+              <em>{ticket?.assignment_group ?? 'create ticket payload'}</em>
+            </div>
+          </div>
+          <div className="workbenchActions">
+            <button onClick={() => startAnalysis()}><ShieldAlert size={17} />Score CVEs</button>
+            <button onClick={() => buildConfig()}><SlidersHorizontal size={17} />Suggest config</button>
+            <button onClick={() => createTicket()}><TicketCheck size={17} />Create ticket</button>
+          </div>
         </div>
-        <div>
-          <span>Read</span>
-          <code>OpenSearch + Kafka feed the CVE and config models</code>
+      </section>
+
+      <section className="remediationWorkbench">
+        <div
+          className="panel dropPanel"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            attachEvidenceFiles(event.dataTransfer.files);
+          }}
+        >
+          <div className="panelHeader">
+            <h2>Evidence Drop</h2>
+            <span>{evidence.length} images</span>
+          </div>
+          <label className="dropZone">
+            <Upload size={22} />
+            <strong>Drop screenshots or diagrams</strong>
+            <span>Use them as ticket evidence for a CVE, failed endpoint, or weak service path.</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(event) => event.target.files && attachEvidenceFiles(event.target.files)}
+            />
+          </label>
+          <div className="evidenceList">
+            {evidence.map((item) => (
+              <div className="evidenceItem" key={item.id}>
+                <img src={item.url} alt={item.name} />
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>{item.size} · {item.status}</span>
+                </div>
+              </div>
+            ))}
+            {!evidence.length && <div className="empty small">No evidence attached yet.</div>}
+          </div>
         </div>
-        <div>
-          <span>Secure</span>
-          <code>make security-login && make security-export</code>
+
+        <div className="panel remediationPanel">
+          <div className="panelHeader">
+            <h2>Remediation Queue</h2>
+            <span>{cooldownAssets.length} on cooldown</span>
+          </div>
+          <div className="hardeningCard">
+            <Wrench size={20} />
+            <div>
+              <strong>{topFinding ? `${topFinding.cve_id} on ${topFinding.asset_name}` : 'Hardening plan'}</strong>
+              <span>{hardeningNote()}</span>
+            </div>
+          </div>
+          <div className="workbenchActions">
+            <button onClick={() => putTopFindingOnCooldown()}><PauseCircle size={17} />Put on cooldown</button>
+            <button onClick={() => createTicket()}><TicketCheck size={17} />Write ticket</button>
+          </div>
+          <div className="cooldownList">
+            {cooldownAssets.map((asset) => <code key={asset}>{asset}</code>)}
+            {!cooldownAssets.length && <span>Cooldown isolates the riskiest CI while the ticket carries CVE findings, evidence images, and config notes.</span>}
+          </div>
         </div>
       </section>
 
@@ -396,7 +630,7 @@ function App() {
         <Metric icon={<GitBranch />} label="Config" value={config?.version ?? 'unknown'}>
           <MetricDetail label="Config source" value="hot-reloaded JSON / Azure Blob path" />
           <MetricDetail label="Replay window" value={`${config?.replay_window ?? '-'} events`} />
-          <MetricDetail label="AI proposal" value={configIntel ? `${configIntel.proposals.length} changes` : 'not generated'} />
+          <MetricDetail label="Proposal" value={configIntel ? `${configIntel.proposals.length} changes` : 'not generated'} />
         </Metric>
         <Metric icon={<ShieldAlert />} label="Risk" value={`${risks.high} high`}>
           <MetricDetail label="CVE model" value={analysis?.model ?? 'weighted-logistic-cve-risk-v1'} />
@@ -423,25 +657,25 @@ function App() {
       <section className={`actionGrid ${!['overview', 'security', 'config'].includes(page) ? 'hidden' : ''}`}>
         <div className="panel actionPanel">
           <div className="panelHeader">
-            <h2>Executive Actions</h2>
+            <h2>Generate Knowledge</h2>
             <span>{actionStatus}</span>
           </div>
           <div className="actionButtons">
             <button onClick={() => generateAnalytics()}>
               <BarChart3 size={17} />
-              Create analytics
+              Refresh signals
             </button>
             <button onClick={() => startAnalysis()}>
               <ShieldAlert size={17} />
-              Start CVE analysis
+              Score CVEs
             </button>
             <button onClick={() => buildConfig()}>
               <SlidersHorizontal size={17} />
-              Build better config
+              Suggest config
             </button>
             <button onClick={() => createTicket()}>
               <PlayCircle size={17} />
-              Create ServiceNow ticket
+              Create ticket
             </button>
           </div>
           <div className="signalGrid">
@@ -514,20 +748,20 @@ function App() {
                   <code>{finding.remediation}</code>
                 </div>
               ))}
-              {!analysis && <div className="empty">Click Start CVE analysis to score live assets from the OpenSearch read model.</div>}
+              {!analysis && <div className="empty">Click Score CVEs to score live assets from the OpenSearch read model.</div>}
             </div>
           </div>
         </details>
 
         <details className="panel insightPanel" open>
           <summary>
-            <span>AI-assisted Configuration Management</span>
+            <span>Configuration Recommendations</span>
             <ChevronDown size={18} />
           </summary>
           <div className="insightBody">
             <div className="modelLine">
               <strong>{configIntel?.model ?? 'config-recommendation-rules-v1'}</strong>
-              <span>{configIntel?.summary ?? 'Build better config from owners, services, CVE pressure, and Kafka replay behavior.'}</span>
+              <span>{configIntel?.summary ?? 'Suggest config from owners, services, CVE pressure, and Kafka replay behavior.'}</span>
             </div>
             <div className="proposalList">
               {(configIntel?.proposals ?? []).map((proposal) => (
@@ -540,7 +774,7 @@ function App() {
                   <code>{proposal.current} {'->'} {proposal.proposed}</code>
                 </div>
               ))}
-              {!configIntel && <div className="empty">Click Build better config to generate a ServiceNow-aware preview config from indexed infrastructure.</div>}
+              {!configIntel && <div className="empty">Click Suggest config to generate a ServiceNow-aware preview config from indexed infrastructure.</div>}
             </div>
           </div>
         </details>
@@ -606,9 +840,9 @@ function App() {
         </section>
       )}
 
-      <details className={`disclosure ${!['overview', 'security'].includes(page) ? 'hidden' : ''}`} open>
+      <details className={`disclosure ${!['overview', 'security'].includes(page) ? 'hidden' : ''}`}>
         <summary>
-          <span>Now Assist Handoff</span>
+          <span>Ticket Evidence</span>
           <ChevronDown size={18} />
         </summary>
         <section className="assistGrid">
@@ -657,9 +891,9 @@ function App() {
         </div>
       </section>
 
-      <details className={`disclosure ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`} open>
+      <details className={`disclosure ${!['overview', 'data'].includes(page) ? 'hidden' : ''}`}>
         <summary>
-          <span>Launch, Import, and Data Contracts</span>
+          <span>Developer Setup and Data Contracts</span>
           <ChevronDown size={18} />
         </summary>
         <section className="explainGrid">
@@ -780,7 +1014,7 @@ function App() {
               </div>
             ))}
             {assets.length === 0 && (
-              <div className="empty">Run make seed, then search for Search or catalog.</div>
+              <div className="empty">Attach JSON or import the sample to start.</div>
             )}
           </div>
         </div>

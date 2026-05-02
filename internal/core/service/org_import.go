@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/domain"
+	"github.com/him-cyber/infra-inventory-stream/internal/core/validate"
 )
 
 var allowedProviders = map[string]bool{
@@ -17,6 +18,15 @@ var allowedProviders = map[string]bool{
 }
 
 func (s *Service) ImportOrg(ctx context.Context, tenant string, req domain.OrgImportRequest) (domain.OrgImportResult, error) {
+	var err error
+	tenant, err = validate.Tenant(tenant)
+	if err != nil {
+		return domain.OrgImportResult{}, err
+	}
+	req, err = validate.OrgImport(req)
+	if err != nil {
+		return domain.OrgImportResult{}, err
+	}
 	provider := strings.ToLower(strings.TrimSpace(req.Provider))
 	if !allowedProviders[provider] {
 		return domain.OrgImportResult{}, errors.New("provider must be azure, aws, or gcp")

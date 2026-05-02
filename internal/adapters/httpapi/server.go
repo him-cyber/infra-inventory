@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/auth"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/domain"
 	"github.com/him-cyber/infra-inventory-stream/internal/core/service"
+	"github.com/him-cyber/infra-inventory-stream/internal/core/validate"
 )
 
 type Server struct {
@@ -59,11 +63,21 @@ func (s *Server) authSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) importOrg(w http.ResponseWriter, r *http.Request) {
 	var req domain.OrgImportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	result, err := s.app.ImportOrg(r.Context(), tenant(r), req)
+	req, err := validate.OrgImport(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	tenantID, err := tenant(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := s.app.ImportOrg(r.Context(), tenantID, req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -128,11 +142,21 @@ func (s *Server) upsertAsset(w http.ResponseWriter, r *http.Request) {
 	ctx, span := otel.Tracer("api").Start(r.Context(), "upsert_asset")
 	defer span.End()
 	var asset domain.Asset
-	if err := json.NewDecoder(r.Body).Decode(&asset); err != nil {
+	if err := decodeJSON(w, r, &asset); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	event, err := s.app.UpsertAsset(ctx, tenant(r), asset)
+	asset, err := validate.Asset(asset)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	tenantID, err := tenant(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	event, err := s.app.UpsertAsset(ctx, tenantID, asset)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -141,11 +165,15 @@ func (s *Server) upsertAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) searchAssets(w http.ResponseWriter, r *http.Request) {
-	q := domain.SearchQuery{
+	q, err := validate.SearchQuery(domain.SearchQuery{
 		Text:        r.URL.Query().Get("q"),
 		Type:        r.URL.Query().Get("type"),
 		Environment: r.URL.Query().Get("env"),
 		Owner:       r.URL.Query().Get("owner"),
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
 	}
 	result, err := s.app.Search(r.Context(), q)
 	if err != nil {
@@ -156,7 +184,12 @@ func (s *Server) searchAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
-	asset, ok, err := s.app.GetAsset(r.Context(), chi.URLParam(r, "id"))
+	id, err := validate.AssetID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	asset, ok, err := s.app.GetAsset(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
@@ -185,11 +218,21 @@ func (s *Server) configVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.app.ConfigVersion())
 }
 
-func tenant(r *http.Request) string {
-	if value := r.Header.Get("X-Tenant"); value != "" {
-		return value
+func tenant(r *http.Request) (string, error) {
+	return validate.Tenant(r.Header.Get("X-Tenant"))
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	validate.LimitJSONBody(w, r)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
 	}
-	return "demo"
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("request body must contain a single JSON object")
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

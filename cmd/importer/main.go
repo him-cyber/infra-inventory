@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/him-cyber/infra-inventory-stream/internal/core/domain"
+	"github.com/him-cyber/infra-inventory-stream/internal/core/validate"
 	"go.yaml.in/yaml/v2"
 )
 
@@ -36,6 +37,13 @@ func main() {
 	}
 	if len(assets) == 0 {
 		exitf("inventory file has no assets")
+	}
+	for i, asset := range assets {
+		checked, err := validate.Asset(asset)
+		if err != nil {
+			exitf("invalid asset[%d]: %v", i, err)
+		}
+		assets[i] = checked
 	}
 	if *dryRun {
 		fmt.Printf("validated %d assets from %s\n", len(assets), *filePath)

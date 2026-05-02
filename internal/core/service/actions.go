@@ -160,7 +160,7 @@ func (s *Service) ConfigIntelligence(ctx context.Context) (domain.ConfigIntellig
 			"database":     "Change / Platform / stateful dependency review",
 		},
 		PreviewConfig: map[string]any{
-			"version":              snap.Version + ".ai-preview",
+			"version":              snap.Version + ".preview",
 			"search_fields":        []string{"name", "owner", "service", "region", "environment", "risk", "type"},
 			"replay_window":        max(128, recent*4),
 			"owner_routes":         owners,

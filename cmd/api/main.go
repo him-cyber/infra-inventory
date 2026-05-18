@@ -11,6 +11,7 @@ import (
 
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/auth"
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/config"
+	"github.com/him-cyber/infra-inventory-stream/internal/adapters/genai"
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/httpapi"
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/kafka"
 	"github.com/him-cyber/infra-inventory-stream/internal/adapters/opensearch"
@@ -57,7 +58,8 @@ func main() {
 	}
 
 	replayWindow := cfg.Snapshot().ReplayWindow
-	inventory := service.NewService(cfg, producer, store, ring.New[domain.Event](replayWindow), ratelimit.NewLimiter(), kafka.Topic())
+	inventory := service.NewService(cfg, producer, store, ring.New[domain.Event](replayWindow), ratelimit.NewLimiter(), kafka.Topic()).
+		WithIncidentIntelligence(genai.NewOpenAIFromEnv())
 	server := &http.Server{
 		Addr:              ":" + valueOrDefault(os.Getenv("PORT"), "8080"),
 		Handler:           httpapi.New(inventory, log, authManager),

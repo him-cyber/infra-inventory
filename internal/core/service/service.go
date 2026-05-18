@@ -24,6 +24,10 @@ type SearchStore interface {
 	Search(context.Context, domain.SearchQuery, []string) (domain.SearchResult, error)
 }
 
+type IncidentIntelligence interface {
+	BriefIncident(context.Context, domain.CVEAnalysisReport, []domain.Asset, []domain.Event) (domain.AIIncidentBrief, error)
+}
+
 type Service struct {
 	config      *config.Manager
 	publisher   kafka.Publisher
@@ -37,10 +41,16 @@ type Service struct {
 	automations []domain.ConfigAutomation
 	ticketMu    sync.RWMutex
 	tickets     []domain.ServiceNowTicket
+	intel       IncidentIntelligence
 }
 
 func NewService(cfg *config.Manager, pub kafka.Publisher, store SearchStore, recent *ring.Buffer[domain.Event], limits *ratelimit.Limiter, topic string) *Service {
 	return &Service{config: cfg, publisher: pub, store: store, recent: recent, limits: limits, topic: topic}
+}
+
+func (s *Service) WithIncidentIntelligence(client IncidentIntelligence) *Service {
+	s.intel = client
+	return s
 }
 
 func (s *Service) UpsertAsset(ctx context.Context, tenant string, asset domain.Asset) (domain.Event, error) {

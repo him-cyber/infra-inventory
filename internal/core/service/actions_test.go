@@ -49,6 +49,9 @@ func TestAnalyticsCVEAnalysisAndTicketUseInventorySignals(t *testing.T) {
 	if report.AnalysisID == "" || report.SearchBackend == "" || len(report.Findings) == 0 {
 		t.Fatalf("expected CVE analysis report, got %+v", report)
 	}
+	if report.IncidentBrief == nil || report.IncidentBrief.Mode == "" {
+		t.Fatalf("expected incident brief, got %+v", report.IncidentBrief)
+	}
 	ticket, err := app.CreateServiceNowTicket(context.Background())
 	if err != nil {
 		t.Fatal(err)

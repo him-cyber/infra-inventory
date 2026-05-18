@@ -1,4 +1,4 @@
-FROM golang:1.26.2-alpine AS build
+FROM golang:1.26.3-alpine AS build
 ARG SERVICE=api
 WORKDIR /src
 RUN apk add --no-cache ca-certificates

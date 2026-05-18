@@ -100,6 +100,16 @@ type CVEAnalysis = {
   model: string;
   summary: string;
   findings: { cve_id: string; asset_name: string; severity: string; score: number; confidence: number; remediation: string }[];
+  incident_brief?: {
+    provider: string;
+    model: string;
+    mode: string;
+    executive_summary: string;
+    probable_cause: string;
+    blast_radius: string;
+    recommended_actions: string[];
+    servicenow_work_notes: string[];
+  };
   kafka_topic: string;
   search_backend: string;
   servicenow_target: string;
@@ -272,6 +282,7 @@ function App() {
   const [cooldownAssets, setCooldownAssets] = useState<string[]>([]);
   const [automations, setAutomations] = useState<ConfigAutomation[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState('');
+  const [shiftMode, setShiftMode] = useState<'infra' | 'api'>('infra');
   const [query, setQuery] = useState('');
   const [config, setConfig] = useState<{ version: string; updated_at: string; replay_window: number } | null>(null);
   const [status, setStatus] = useState('checking');
@@ -355,15 +366,19 @@ function App() {
   async function importAzureOrg() {
     if (authSession?.mode === 'azure' && !authSession.authenticated) {
       setActionStatus('Azure sign-in required');
-      window.location.href = `${apiBase}${authSession.login_url || '/auth/login'}`;
+      changePage('cloud');
       return;
     }
     if (authSession?.mode !== 'azure') {
-      setAzureModalOpen(true);
-      setActionStatus('Azure SSO not configured locally');
+      changePage('cloud');
+      setActionStatus('cloud gateway ready');
       return;
     }
     await importAzureSample('connected');
+  }
+
+  function startCloudGateway() {
+    window.location.href = `${apiBase}${authSession?.login_url ?? '/auth/login'}`;
   }
 
   async function importAzureSample(source: 'local' | 'connected' = 'local') {
@@ -534,6 +549,8 @@ function App() {
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? assets[0];
   const selectedFinding = selectedAsset ? analysis?.findings.find((finding) => finding.asset_name === selectedAsset.name) : undefined;
   const latestAutomation = automations[0];
+  const gatewayUser = authSession?.user?.email || authSession?.user?.name || 'Local operator';
+  const gatewayReady = Boolean(authSession?.authenticated || authSession?.mode === 'dev');
 
   return (
     <main>
@@ -570,7 +587,7 @@ function App() {
         </div>
         <div className="commandActions">
           <button onClick={() => attachInventory()}><PlusCircle size={17} />Add sample</button>
-          <button onClick={() => importAzureOrg()}><Cloud size={17} />Azure import</button>
+          <button onClick={() => changePage('cloud')}><Cloud size={17} />Cloud gateway</button>
           <button onClick={() => generateKnowledge()}><BarChart3 size={17} />Generate</button>
           <button onClick={() => applyConfigAutomation()}><CheckCircle2 size={17} />Apply guardrail</button>
         </div>
@@ -652,12 +669,62 @@ function App() {
           ['overview', 'Overview'],
           ['security', 'Security'],
           ['config', 'Config'],
+          ['cloud', 'Cloud gateway'],
           ['org', 'Org access'],
           ['data', 'Data']
         ].map(([id, label]) => (
           <button className={page === id ? 'active' : ''} key={id} onClick={() => changePage(id)}>{label}</button>
         ))}
       </nav>
+
+      {page === 'cloud' && (
+        <section className="cloudGateway">
+          <div className="gatewayHero">
+            <div>
+              <p className="eyebrow">Cloud Integration Gateway</p>
+              <h2>{gatewayReady ? `Ready as ${gatewayUser}` : 'Sign in to connect cloud inventory'}</h2>
+              <span>Use this gateway before importing Azure, Kubernetes, API, or YAML inventory into the incident-intelligence graph.</span>
+            </div>
+            <div className="gatewayActions">
+              <button onClick={() => startCloudGateway()}><UserRound size={17} />{authSession?.authenticated ? 'Refresh session' : 'Start login'}</button>
+              <button onClick={() => importAzureSample('local')}><Cloud size={17} />Use local Azure sample</button>
+            </div>
+          </div>
+
+          <div className="gatewayGrid">
+            <div className="gatewayCard active">
+              <Cloud size={22} />
+              <strong>Azure</strong>
+              <span>{authSession?.mode === 'azure' ? 'Entra ID + OIDC gateway' : 'Local gateway session; Azure SSO configurable'}</span>
+              <code>{authSession?.storage ?? 'encrypted HttpOnly SameSite cookie'}</code>
+              <button onClick={() => importAzureOrg()}>Import Azure inventory</button>
+            </div>
+            <div className="gatewayCard">
+              <Network size={22} />
+              <strong>Kubernetes</strong>
+              <span>Attach AKS/K8s manifests or exported cluster inventory as YAML.</span>
+              <code>make import FILE=examples/local-office.yaml</code>
+            </div>
+            <div className="gatewayCard">
+              <Box size={22} />
+              <strong>API inventory</strong>
+              <span>Post services, endpoints, queues, and dependencies directly into the Go API.</span>
+              <code>POST /api/assets</code>
+            </div>
+          </div>
+
+          <div className="shiftPanel">
+            <div>
+              <strong>Shift detection mode</strong>
+              <span>{shiftMode === 'infra' ? 'Watching asset, dependency, cloud, and CVE drift.' : 'Watching API/service ownership, version, and dependency drift.'}</span>
+            </div>
+            <div className="segmented">
+              <button className={shiftMode === 'infra' ? 'active' : ''} onClick={() => setShiftMode('infra')}>Infra</button>
+              <button className={shiftMode === 'api' ? 'active' : ''} onClick={() => setShiftMode('api')}>API</button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="stats">
         <Metric icon={<Server />} label="Assets" value={assets.length.toString()}>
@@ -896,9 +963,25 @@ function App() {
           </summary>
           <div className="insightBody">
             <div className="modelLine">
-              <strong>{analysis?.model ?? 'weighted-logistic-cve-risk-v1'}</strong>
-              <span>{analysis?.summary ?? 'Run analysis to score every indexed infrastructure asset from OpenSearch.'}</span>
+              <strong>{analysis?.incident_brief ? `${analysis.incident_brief.provider} · ${analysis.incident_brief.model}` : analysis?.model ?? 'weighted-logistic-cve-risk-v1'}</strong>
+              <span>{analysis?.incident_brief?.executive_summary ?? analysis?.summary ?? 'Run analysis to score every indexed infrastructure asset from OpenSearch.'}</span>
             </div>
+            {analysis?.incident_brief && (
+              <div className="aiBrief">
+                <div>
+                  <strong>Probable cause</strong>
+                  <span>{analysis.incident_brief.probable_cause}</span>
+                </div>
+                <div>
+                  <strong>Blast radius</strong>
+                  <span>{analysis.incident_brief.blast_radius}</span>
+                </div>
+                <div>
+                  <strong>Actions</strong>
+                  {analysis.incident_brief.recommended_actions.map((item) => <code key={item}>{item}</code>)}
+                </div>
+              </div>
+            )}
             <div className="findingList">
               {(analysis?.findings ?? []).slice(0, 6).map((finding) => (
                 <div className="finding" key={`${finding.cve_id}-${finding.asset_name}`}>

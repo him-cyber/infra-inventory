@@ -14,11 +14,12 @@ Open http://localhost:5173.
 Use the UI in this order:
 
 1. Click `Add sample` or import `examples/local-office.yaml` to stream office, AKS, container, and Key Vault assets.
-2. Click `Generate` to refresh analytics, CVE scoring, and config suggestions.
-3. Use the inventory table and live map to select an asset and inspect its dependencies.
-4. Click `Apply guardrail` to create a configuration automation preview from the current inventory.
-5. Drag a screenshot or topology image into `Evidence Drop`.
-6. Click `Put on cooldown` for the highest-risk CI, then `Review ticket` and submit it.
+2. Open `Cloud gateway` to start the local gateway session or route Azure mode through Entra ID before imports.
+3. Click `Generate` to refresh analytics, CVE scoring, GenAI incident brief, and config suggestions.
+4. Use the inventory table and live map to select an asset and inspect its dependencies.
+5. Click `Apply guardrail` to create a configuration automation preview from the current inventory.
+6. Drag a screenshot or topology image into `Evidence Drop`.
+7. Click `Put on cooldown` for the highest-risk CI, then `Review ticket` and submit it.
 
 Verify the stack:
 
@@ -50,6 +51,24 @@ What happens:
 5. The web console reads the search index, accepts screenshot evidence, and generates remediation knowledge from the current state.
 
 The file matters only when it is a real inventory source or export. Good inputs include Azure Resource Graph exports, Terraform state converted to this schema, Kubernetes manifests, Helm values, Docker Compose files, network device exports, or a CMDB export. Hand-written sample YAML is only seed data for local testing.
+
+## GenAI Incident Briefs
+
+The local scorer always works. To add a real model service call for incident intelligence, set an OpenAI key before starting Docker:
+
+```bash
+export OPENAI_API_KEY=<your-key>
+export OPENAI_MODEL=gpt-5
+make demo
+```
+
+Then click `Score CVEs` or call:
+
+```bash
+curl -X POST "http://localhost:8080/api/security/analyze"
+```
+
+The API sends the top CVE findings, asset graph sample, recent Kafka events, OpenSearch evidence path, and ServiceNow target to the OpenAI Responses API. The returned `incident_brief` contains an executive summary, probable cause, blast radius, recommended actions, and ServiceNow work notes. If `OPENAI_API_KEY` is absent or the model call fails, the service returns a deterministic local incident brief so the demo and CI never break.
 
 ## Local URLs
 

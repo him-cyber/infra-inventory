@@ -146,6 +146,139 @@ h2 {
   min-height: 36px;
 }
 
+.cloudGateway {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.gatewayHero {
+  align-items: center;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(250, 204, 21, 0.2), transparent 20%),
+    linear-gradient(135deg, #111827 0%, #0f766e 100%);
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.gatewayHero h2 {
+  font-size: 1.35rem;
+  margin-bottom: 6px;
+}
+
+.gatewayHero span {
+  color: #d7e2ef;
+  display: block;
+  line-height: 1.4;
+  max-width: 720px;
+}
+
+.gatewayActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.gatewayActions button:first-child {
+  background: #56d364;
+  color: #0b1220;
+}
+
+.gatewayGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gatewayCard {
+  background: #ffffff;
+  border: 1px solid #dce4ee;
+  border-left: 4px solid #38bdf8;
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(22, 32, 51, 0.06);
+  display: grid;
+  gap: 9px;
+  min-height: 190px;
+  padding: 14px;
+}
+
+.gatewayCard.active {
+  border-left-color: #56d364;
+}
+
+.gatewayCard svg {
+  color: #0b6f43;
+}
+
+.gatewayCard span {
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.gatewayCard code {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #172033;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+  padding: 7px 8px;
+}
+
+.gatewayCard button {
+  justify-self: start;
+}
+
+.shiftPanel {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dce4ee;
+  border-left: 4px solid #facc15;
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(22, 32, 51, 0.06);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.shiftPanel > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.shiftPanel span {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.segmented {
+  background: #f8fafc;
+  border: 1px solid #dce4ee;
+  border-radius: 8px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.segmented button {
+  background: transparent;
+  color: #172033;
+  min-height: 32px;
+}
+
+.segmented button.active {
+  background: #111827;
+  color: #ffffff;
+}
+
 .ribbon {
   background:
     radial-gradient(circle at 82% 12%, rgba(250, 204, 21, 0.24), transparent 18%),
@@ -865,6 +998,47 @@ h2 {
   line-height: 1.35;
 }
 
+.aiBrief {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.aiBrief > div {
+  background: #111827;
+  border-left: 4px solid #56d364;
+  border-radius: 8px;
+  color: #ffffff;
+  display: grid;
+  gap: 7px;
+  min-height: 112px;
+  padding: 10px;
+}
+
+.aiBrief > div:nth-child(2) {
+  border-left-color: #38bdf8;
+}
+
+.aiBrief > div:nth-child(3) {
+  border-left-color: #facc15;
+}
+
+.aiBrief span {
+  color: #d7e2ef;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.aiBrief code {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.76rem;
+  padding: 6px 7px;
+}
+
 .findingList, .proposalList {
   display: grid;
   gap: 10px;
@@ -1396,7 +1570,7 @@ input {
 }
 
 @media (max-width: 860px) {
-  .ribbon, .stats, .pipeline, .workbench, .remediationWorkbench, .inventoryConsole, .automationConsole, .actionGrid, .assistGrid, .explainGrid, .grid, .endpointGrid, .teamGrid, .signalGrid, .intelligenceGrid, .routingGrid, .knowledgeCards, .guardrailGrid {
+  .ribbon, .stats, .pipeline, .workbench, .remediationWorkbench, .inventoryConsole, .automationConsole, .actionGrid, .assistGrid, .explainGrid, .grid, .endpointGrid, .teamGrid, .signalGrid, .intelligenceGrid, .routingGrid, .knowledgeCards, .guardrailGrid, .aiBrief, .gatewayGrid {
     grid-template-columns: 1fr;
   }
 
@@ -1407,6 +1581,11 @@ input {
   .commandBar {
     align-items: start;
     display: grid;
+  }
+
+  .gatewayHero, .shiftPanel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .commandActions {

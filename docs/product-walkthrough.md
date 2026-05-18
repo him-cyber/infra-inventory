@@ -20,9 +20,10 @@ React UI -> Go API -> Kafka topic -> Go indexer -> OpenSearch -> Go search/API r
 
 1. Search the indexed inventory by asset, owner, service, region, or risk.
 2. Run CVE scoring against live OpenSearch assets.
-3. Generate configuration recommendations from observed owners, services, risks, and replay behavior.
-4. Import a cloud account inventory snapshot and publish each discovered asset through Kafka.
-5. Review and submit a ServiceNow-style incident/change payload with evidence from Kafka and OpenSearch.
+3. Generate a model-backed incident brief from top findings, graph context, Kafka evidence, and the ServiceNow target when `OPENAI_API_KEY` is configured.
+4. Generate configuration recommendations from observed owners, services, risks, and replay behavior.
+5. Import a cloud account inventory snapshot and publish each discovered asset through Kafka.
+6. Review and submit a ServiceNow-style incident/change payload with evidence from Kafka, OpenSearch, and the incident brief.
 
 ## Security And Identity
 

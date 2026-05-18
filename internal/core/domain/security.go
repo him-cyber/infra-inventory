@@ -14,14 +14,26 @@ type CVEFinding struct {
 }
 
 type CVEAnalysisReport struct {
-	AnalysisID       string       `json:"analysis_id"`
-	GeneratedAt      time.Time    `json:"generated_at"`
-	Model            string       `json:"model"`
-	Summary          string       `json:"summary"`
-	Findings         []CVEFinding `json:"findings"`
-	KafkaTopic       string       `json:"kafka_topic"`
-	SearchBackend    string       `json:"search_backend"`
-	ServiceNowTarget string       `json:"servicenow_target"`
+	AnalysisID       string           `json:"analysis_id"`
+	GeneratedAt      time.Time        `json:"generated_at"`
+	Model            string           `json:"model"`
+	Summary          string           `json:"summary"`
+	Findings         []CVEFinding     `json:"findings"`
+	IncidentBrief    *AIIncidentBrief `json:"incident_brief,omitempty"`
+	KafkaTopic       string           `json:"kafka_topic"`
+	SearchBackend    string           `json:"search_backend"`
+	ServiceNowTarget string           `json:"servicenow_target"`
+}
+
+type AIIncidentBrief struct {
+	Provider            string   `json:"provider"`
+	Model               string   `json:"model"`
+	Mode                string   `json:"mode"`
+	ExecutiveSummary    string   `json:"executive_summary"`
+	ProbableCause       string   `json:"probable_cause"`
+	BlastRadius         string   `json:"blast_radius"`
+	RecommendedActions  []string `json:"recommended_actions"`
+	ServiceNowWorkNotes []string `json:"servicenow_work_notes"`
 }
 
 type ServiceNowTicket struct {

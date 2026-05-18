@@ -43,6 +43,7 @@ func (s *Service) StartCVEAnalysis(ctx context.Context) (domain.CVEAnalysisRepor
 	if err != nil {
 		return domain.CVEAnalysisReport{}, err
 	}
+	recent := s.recent.Snapshot()
 	model := ml.NewCVEModel()
 	findings := make([]domain.CVEFinding, 0, len(result.Assets))
 	for _, asset := range result.Assets {
@@ -56,7 +57,7 @@ func (s *Service) StartCVEAnalysis(ctx context.Context) (domain.CVEAnalysisRepor
 		return findings[i].Score > findings[j].Score
 	})
 	now := time.Now().UTC()
-	return domain.CVEAnalysisReport{
+	report := domain.CVEAnalysisReport{
 		AnalysisID:       "CVE-ANALYSIS-" + now.Format("20060102-150405"),
 		GeneratedAt:      now,
 		Model:            "weighted-logistic-cve-risk-v1",
@@ -65,7 +66,10 @@ func (s *Service) StartCVEAnalysis(ctx context.Context) (domain.CVEAnalysisRepor
 		KafkaTopic:       s.topic,
 		SearchBackend:    "OpenSearch / Elasticsearch-compatible index",
 		ServiceNowTarget: "incident + change evidence",
-	}, nil
+	}
+	brief := s.incidentBrief(ctx, report, result.Assets, recent)
+	report.IncidentBrief = &brief
+	return report, nil
 }
 
 func (s *Service) DraftServiceNowTicket(ctx context.Context) (domain.ServiceNowTicket, error) {
@@ -94,11 +98,41 @@ func (s *Service) DraftServiceNowTicket(ctx context.Context) (domain.ServiceNowT
 		ConfigurationItems: configurationItems,
 		WorkNotes: []string{
 			report.Summary,
+			"AI brief: " + report.IncidentBrief.ExecutiveSummary,
 			"Evidence: Kafka topic " + report.KafkaTopic,
 			"Evidence: " + report.SearchBackend,
 			"Attach /api/security/analyze output to ServiceNow incident/change record.",
 		},
 	}, nil
+}
+
+func (s *Service) incidentBrief(ctx context.Context, report domain.CVEAnalysisReport, assets []domain.Asset, events []domain.Event) domain.AIIncidentBrief {
+	if s.intel != nil {
+		if brief, err := s.intel.BriefIncident(ctx, report, assets, events); err == nil {
+			return brief
+		}
+	}
+	top := "no high-risk asset"
+	if len(report.Findings) > 0 {
+		top = report.Findings[0].AssetName
+	}
+	return domain.AIIncidentBrief{
+		Provider:         "local",
+		Model:            "deterministic-incident-brief-v1",
+		Mode:             "fallback",
+		ExecutiveSummary: fmt.Sprintf("%s is the highest-risk CI in a %d-asset incident graph.", top, len(assets)),
+		ProbableCause:    "recent infrastructure changes and exposed dependencies should be reviewed against the Kafka replay buffer and OpenSearch evidence",
+		BlastRadius:      fmt.Sprintf("%d indexed assets and %d recent stream events are in scope", len(assets), len(events)),
+		RecommendedActions: []string{
+			"open a ServiceNow incident for the top impacted configuration items",
+			"replay recent Kafka events before patching or changing routing",
+			"verify owner, dependency, and environment fields before closing remediation",
+		},
+		ServiceNowWorkNotes: []string{
+			report.Summary,
+			"Fallback incident brief generated locally because no GenAI provider is configured.",
+		},
+	}
 }
 
 func (s *Service) CreateServiceNowTicket(ctx context.Context) (domain.ServiceNowTicket, error) {
